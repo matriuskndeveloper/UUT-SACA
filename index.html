@@ -16,7 +16,8 @@
 
   <button id="connectButton">Conectar Wallet</button>
   <br><br>
- <label>Monto a retirar (BNB):</label>
+  <p><strong>Balance del contrato (USDT):</strong> <span id="contractBalance">-</span></p>
+ <label>Monto a retirar (USDT):</label>
  <input type="text" id="withdrawAmount" placeholder="0.1">
  <br><br>
 
@@ -29,74 +30,84 @@
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 
   <script>
-    /**********************************************
-     * CONFIGURACIÓN BÁSICA
-     **********************************************/
-    const CONTRACT_ADDRESS = "0x524C8B19d28d4C24E73cd2126E3C6b87A40EdD0f";
+/**********************************************
+ * CONFIGURACIÓN BÁSICA
+ **********************************************/
+const CONTRACT_ADDRESS = "0x524C8B19d28d4C24E73cd2126E3C6b87A40EdD0f";
+const USDT_ADDRESS     = "0x55d398326f99059fF775485246999027B3197955";
 
-    // ABI mínimo; ajustalo según tu contrato real:
+// USDT en BSC tiene 18 decimales
+const USDT_DECIMALS = 18;
+
+// ABI mínimo del contrato de donaciones
 const CONTRACT_ABI = [
   "function withdraw(uint256 amountUSDT) external",
   "function withdrawAll() external",
 ];
 
+// ABI mínimo de USDT (solo lo que usamos)
+const USDT_ABI = [
+  "function balanceOf(address account) external view returns (uint256)",
+  "function decimals() external view returns (uint8)"
+];
 
-    document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
+document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
 
-    let provider, signer, contract;
+let provider, signer, contract, contractUsdt;
 
-    /**********************************************
-     * CONECTAR WALLET
-     **********************************************/
-    document.getElementById("connectButton").onclick = async () => {
-      try {
-        if (!window.ethereum) {
-          alert("Necesitas MetaMask para continuar.");
-          return;
-        }
-
-        await window.ethereum.request({ method: "eth_requestAccounts" });
-
-        provider = new ethers.providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
-        contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-        const account = await signer.getAddress();
-        document.getElementById("account").textContent = account;
-
-        const network = await provider.getNetwork();
-        document.getElementById("network").textContent =
-          `${network.name} (chainId: ${network.chainId})`;
-
-        document.getElementById("withdrawBtn").disabled = false;
-        document.getElementById("withdrawAllBtn").disabled = false;
-
-        await updateBalance();
-
-        setStatus("Wallet conectada correctamente.");
-      } catch (err) {
-        console.error(err);
-        setStatus("Error al conectar: " + err.message);
-      }
-    };
-
-    /**********************************************
-     * LEER BALANCE DEL CONTRATO
-     **********************************************/
-    async function updateBalance() {
-      try {
-        const raw = await provider.getBalance(CONTRACT_ADDRESS);
-        const bnb = ethers.utils.formatEther(raw);
-        document.getElementById("contractBalance").textContent = bnb;
-      } catch (err) {
-        console.error(err);
-        setStatus("Error leyendo el balance.");
-      }
+/**********************************************
+ * CONECTAR WALLET
+ **********************************************/
+document.getElementById("connectButton").onclick = async () => {
+  try {
+    if (!window.ethereum) {
+      alert("Necesitas MetaMask para continuar.");
+      return;
     }
 
-    /**********************************************
-     * BOTÓN WITHDRAW
-     **********************************************/
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+
+    provider    = new ethers.providers.Web3Provider(window.ethereum);
+    signer      = provider.getSigner();
+    contract    = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+    contractUsdt = new ethers.Contract(USDT_ADDRESS, USDT_ABI, provider);
+
+    const account = await signer.getAddress();
+    document.getElementById("account").textContent = account;
+
+    const network = await provider.getNetwork();
+    document.getElementById("network").textContent =
+      `${network.name} (chainId: ${network.chainId})`;
+
+    document.getElementById("withdrawBtn").disabled = false;
+    document.getElementById("withdrawAllBtn").disabled = false;
+
+    await updateBalance();
+
+    setStatus("Wallet conectada correctamente.");
+  } catch (err) {
+    console.error(err);
+    setStatus("Error al conectar: " + err.message);
+  }
+};
+
+/**********************************************
+ * LEER BALANCE DEL CONTRATO (USDT)
+ **********************************************/
+async function updateBalance() {
+  try {
+    const raw = await contractUsdt.balanceOf(CONTRACT_ADDRESS);
+    const usdtBalance = ethers.utils.formatUnits(raw, USDT_DECIMALS);
+    document.getElementById("contractBalance").textContent = usdtBalance;
+  } catch (err) {
+    console.error(err);
+    setStatus("Error leyendo el balance USDT.");
+  }
+}
+
+/**********************************************
+ * BOTÓN WITHDRAW (monto)
+ **********************************************/
 document.getElementById("withdrawBtn").onclick = async () => {
   try {
     const amountStr = document.getElementById("withdrawAmount").value.trim();
@@ -105,42 +116,43 @@ document.getElementById("withdrawBtn").onclick = async () => {
       return;
     }
 
-    // Cambia 18 por 6 si tu USDT tiene 6 decimales
-    const amountUSDT = ethers.utils.parseUnits(amountStr, 18);
+    // USDT en BSC: 18 decimales
+    const amountUSDT = ethers.utils.parseUnits(amountStr, USDT_DECIMALS);
 
     setStatus("Enviando withdraw...");
     const tx = await contract.withdraw(amountUSDT);
     setStatus("Tx enviada: " + tx.hash);
     await tx.wait();
     setStatus("Withdraw confirmado.");
+
+    await updateBalance();
   } catch (err) {
     console.error(err);
     setStatus("Error en withdraw: " + (err.data?.message || err.message));
   }
 };
 
+/**********************************************
+ * BOTÓN WITHDRAW ALL
+ **********************************************/
+document.getElementById("withdrawAllBtn").onclick = async () => {
+  try {
+    setStatus("Enviando withdrawAll...");
+    const tx = await contract.withdrawAll();
+    setStatus("Tx enviada: " + tx.hash);
+    await tx.wait();
+    setStatus("WithdrawAll confirmado.");
+    await updateBalance();
+  } catch (err) {
+    console.error(err);
+    setStatus("Error en withdrawAll: " + (err.data?.message || err.message));
+  }
+};
 
+function setStatus(msg) {
+  document.getElementById("status").innerText = msg;
+}
 
-    /**********************************************
-     * BOTÓN WITHDRAW ALL
-     **********************************************/
-    document.getElementById("withdrawAllBtn").onclick = async () => {
-      try {
-        setStatus("Enviando withdrawAll...");
-        const tx = await contract.withdrawAll();
-        setStatus("Tx enviada: " + tx.hash);
-        await tx.wait();
-        setStatus("WithdrawAll confirmado.");
-        await updateBalance();
-      } catch (err) {
-        console.error(err);
-        setStatus("Error en withdrawAll: " + (err.data?.message || err.message));
-      }
-    };
-
-    function setStatus(msg) {
-      document.getElementById("status").innerText = msg;
-    }
   </script>
 </body>
 </html>
