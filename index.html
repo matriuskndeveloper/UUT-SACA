@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Panel Withdraw</title>
+</head>
+
+<body>
+  <h2>Panel de Withdraw</h2>
+
+  <p><strong>Contrato:</strong> <span id="contractAddress"></span></p>
+  <p><strong>Cuenta conectada:</strong> <span id="account">No conectado</span></p>
+  <p><strong>Red:</strong> <span id="network">Desconocida</span></p>
+  <p><strong>Balance del contrato:</strong> <span id="contractBalance">-</span> BNB</p>
+
+  <button id="connectButton">Conectar Wallet</button>
+  <br><br>
+
+  <button id="withdrawBtn" disabled>Withdraw</button>
+  <button id="withdrawAllBtn" disabled>Withdraw All</button>
+
+  <p id="status"></p>
+
+  <!-- Ethers.js v5 -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+
+  <script>
+    /**********************************************
+     * CONFIGURACIÓN BÁSICA
+     **********************************************/
+    const CONTRACT_ADDRESS = "0xTU_CONTRATO_AQUI";
+
+    // ABI mínimo; ajustalo según tu contrato real:
+    const CONTRACT_ABI = [
+      "function withdraw() public",
+      "function withdrawAll() public",
+    ];
+
+    document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
+
+    let provider, signer, contract;
+
+    /**********************************************
+     * CONECTAR WALLET
+     **********************************************/
+    document.getElementById("connectButton").onclick = async () => {
+      try {
+        if (!window.ethereum) {
+          alert("Necesitas MetaMask para continuar.");
+          return;
+        }
+
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+        const account = await signer.getAddress();
+        document.getElementById("account").textContent = account;
+
+        const network = await provider.getNetwork();
+        document.getElementById("network").textContent =
+          `${network.name} (chainId: ${network.chainId})`;
+
+        document.getElementById("withdrawBtn").disabled = false;
+        document.getElementById("withdrawAllBtn").disabled = false;
+
+        await updateBalance();
+
+        setStatus("Wallet conectada correctamente.");
+      } catch (err) {
+        console.error(err);
+        setStatus("Error al conectar: " + err.message);
+      }
+    };
+
+    /**********************************************
+     * LEER BALANCE DEL CONTRATO
+     **********************************************/
+    async function updateBalance() {
+      try {
+        const raw = await provider.getBalance(CONTRACT_ADDRESS);
+        const bnb = ethers.utils.formatEther(raw);
+        document.getElementById("contractBalance").textContent = bnb;
+      } catch (err) {
+        console.error(err);
+        setStatus("Error leyendo el balance.");
+      }
+    }
+
+    /**********************************************
+     * BOTÓN WITHDRAW
+     **********************************************/
+    document.getElementById("withdrawBtn").onclick = async () => {
+      try {
+        setStatus("Enviando withdraw...");
+        const tx = await contract.withdraw();
+        setStatus("Tx enviada: " + tx.hash);
+        await tx.wait();
+        setStatus("Withdraw confirmado.");
+        await updateBalance();
+      } catch (err) {
+        console.error(err);
+        setStatus("Error en withdraw: " + (err.data?.message || err.message));
+      }
+    };
+
+    /**********************************************
+     * BOTÓN WITHDRAW ALL
+     **********************************************/
+    document.getElementById("withdrawAllBtn").onclick = async () => {
+      try {
+        setStatus("Enviando withdrawAll...");
+        const tx = await contract.withdrawAll();
+        setStatus("Tx enviada: " + tx.hash);
+        await tx.wait();
+        setStatus("WithdrawAll confirmado.");
+        await updateBalance();
+      } catch (err) {
+        console.error(err);
+        setStatus("Error en withdrawAll: " + (err.data?.message || err.message));
+      }
+    };
+
+    function setStatus(msg) {
+      document.getElementById("status").innerText = msg;
+    }
+  </script>
+</body>
+</html>
