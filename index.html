@@ -16,6 +16,9 @@
 
   <button id="connectButton">Conectar Wallet</button>
   <br><br>
+ <label>Monto a retirar (BNB):</label>
+ <input type="text" id="withdrawAmount" placeholder="0.1">
+ <br><br>
 
   <button id="withdrawBtn" disabled>Withdraw</button>
   <button id="withdrawAllBtn" disabled>Withdraw All</button>
@@ -32,10 +35,11 @@
     const CONTRACT_ADDRESS = "0x524C8B19d28d4C24E73cd2126E3C6b87A40EdD0f";
 
     // ABI mínimo; ajustalo según tu contrato real:
-    const CONTRACT_ABI = [
-      "function withdraw() public",
-      "function withdrawAll() public",
-    ];
+const CONTRACT_ABI = [
+  "function withdraw(uint256 amountUSDT) external",
+  "function withdrawAll() external",
+];
+
 
     document.getElementById("contractAddress").textContent = CONTRACT_ADDRESS;
 
@@ -93,19 +97,29 @@
     /**********************************************
      * BOTÓN WITHDRAW
      **********************************************/
-    document.getElementById("withdrawBtn").onclick = async () => {
-      try {
-        setStatus("Enviando withdraw...");
-        const tx = await contract.withdraw();
-        setStatus("Tx enviada: " + tx.hash);
-        await tx.wait();
-        setStatus("Withdraw confirmado.");
-        await updateBalance();
-      } catch (err) {
-        console.error(err);
-        setStatus("Error en withdraw: " + (err.data?.message || err.message));
-      }
-    };
+document.getElementById("withdrawBtn").onclick = async () => {
+  try {
+    const amountStr = document.getElementById("withdrawAmount").value.trim();
+    if (!amountStr) {
+      setStatus("Debe ingresar un monto en USDT.");
+      return;
+    }
+
+    // Cambia 18 por 6 si tu USDT tiene 6 decimales
+    const amountUSDT = ethers.utils.parseUnits(amountStr, 18);
+
+    setStatus("Enviando withdraw...");
+    const tx = await contract.withdraw(amountUSDT);
+    setStatus("Tx enviada: " + tx.hash);
+    await tx.wait();
+    setStatus("Withdraw confirmado.");
+  } catch (err) {
+    console.error(err);
+    setStatus("Error en withdraw: " + (err.data?.message || err.message));
+  }
+};
+
+
 
     /**********************************************
      * BOTÓN WITHDRAW ALL
